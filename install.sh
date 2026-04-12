@@ -117,8 +117,9 @@ echo "www-data ALL=(ALL) NOPASSWD: /usr/local/bin/db-backup.sh" >> /etc/sudoers
 
 # ---- Start PHP-FPM ----
 PHP_FPM=$(systemctl list-units --type=service | grep -o 'php[0-9.]*-fpm' | head -1)
-PHP_SOCK=$(find /run/php/ -name "php*-fpm.sock" | head -1)
 systemctl enable "$PHP_FPM" && systemctl start "$PHP_FPM"
+sleep 2
+PHP_SOCK=$(find /run/php/ -name "php*-fpm.sock" | head -1)
 
 # ---- Reload nginx ----
 nginx -t && systemctl reload nginx
