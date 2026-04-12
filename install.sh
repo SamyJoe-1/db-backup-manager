@@ -107,7 +107,7 @@ touch /etc/dbbackup/allowed_ips.txt
 chmod 644 /etc/dbbackup/allowed_ips.txt
 
 # ---- Firewall ----
-ufw allow $APP_PORT/tcp
+ufw allow "${APP_PORT}/tcp"
 
 # ---- Cron ----
 echo "www-data" >> /etc/cron.allow
