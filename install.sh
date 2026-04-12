@@ -80,7 +80,7 @@ server {
 
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_pass unix:$PHP_SOCK;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         include fastcgi_params;
     }
@@ -116,7 +116,9 @@ echo "www-data ALL=(ALL) NOPASSWD: /usr/local/bin/db-backup.sh" >> /etc/sudoers
 (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/sync-nginx-ips.sh") | crontab -
 
 # ---- Start PHP-FPM ----
-systemctl enable php8.2-fpm && systemctl start php8.2-fpm
+PHP_FPM=$(systemctl list-units --type=service | grep -o 'php[0-9.]*-fpm' | head -1)
+PHP_SOCK=$(find /run/php/ -name "php*-fpm.sock" | head -1)
+systemctl enable "$PHP_FPM" && systemctl start "$PHP_FPM"
 
 # ---- Reload nginx ----
 nginx -t && systemctl reload nginx
