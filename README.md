@@ -53,11 +53,14 @@ bash <(curl -sSL https://cdn.clickshare.store/update.sh)
 
 ---
 
-## Google Drive Setup
+## Google Drive Setup (Manual — Not Part of Installer)
 
-After install, configure rclone manually to enable Google Drive uploads:
+After install, you need to configure rclone manually to enable Google Drive uploads.
 
-1. Install rclone (already done by installer)
+1. Install rclone:
+   ```bash
+   curl https://rclone.org/install.sh | bash
+   ```
 2. Create a Google Cloud project and enable the Drive API
 3. Create OAuth credentials (Desktop app)
 4. Run on your local PC:
@@ -82,23 +85,6 @@ After install, configure rclone manually to enable Google Drive uploads:
    ```bash
    rclone ls drive:
    ```
-
----
-
-## IP Whitelist
-
-To restrict access by IP, edit this file on the VPS:
-
-```
-/etc/dbbackup/allowed_ips.txt
-```
-
-Add one IP per line. The server checks for changes every 5 minutes and reloads nginx automatically — no SSH commands needed.
-
-To find your current public IP:
-```bash
-curl ifconfig.me
-```
 
 ---
 
