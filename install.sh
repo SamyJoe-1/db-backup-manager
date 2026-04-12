@@ -7,6 +7,9 @@
 
 set -e
 
+PHP_FPM=$(systemctl list-units --type=service | grep -o 'php[0-9.]*-fpm' | head -1)
+PHP_SOCK=$(find /run/php/ -name "php*-fpm.sock" | grep -v "^/run/php/php-fpm.sock" | head -1)
+
 TOKEN="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"
 REPO="https://raw.githubusercontent.com/SamyJoe-1/db-backup-manager/main"
 AUTH="-H \"Authorization: token $TOKEN\""
@@ -115,11 +118,7 @@ echo "www-data ALL=(ALL) NOPASSWD: /usr/local/bin/db-backup.sh" >> /etc/sudoers
 (crontab -l 2>/dev/null; echo "50 23 * * * /usr/local/bin/backup-to-drive.sh") | crontab -
 (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/sync-nginx-ips.sh") | crontab -
 
-# ---- Start PHP-FPM ----
-PHP_FPM=$(systemctl list-units --type=service | grep -o 'php[0-9.]*-fpm' | head -1)
 systemctl enable "$PHP_FPM" && systemctl start "$PHP_FPM"
-sleep 2
-PHP_SOCK=$(find /run/php/ -name "php*-fpm.sock" | head -1)
 
 # ---- Reload nginx ----
 nginx -t && systemctl reload nginx
