@@ -53,7 +53,7 @@ bash <(curl -sSL https://cdn.clickshare.store/update.sh)
 
 ---
 
-## Google Drive Setup (Manual — Not Part of Installer)
+## Google Drive Setup (Optional)
 
 After install, you need to configure rclone manually to enable Google Drive uploads.
 
