@@ -420,6 +420,14 @@ if (isset($_POST['action'])) {
             overflow: hidden;
         }
 
+        .panel-databases {
+            overflow: visible;
+        }
+
+        .panel-databases .panel-body {
+            overflow: visible;
+        }
+
         .panel-header {
             display: flex;
             align-items: center;
@@ -507,6 +515,7 @@ if (isset($_POST['action'])) {
             padding-top: 12px;
             border-top: 1px solid var(--border);
             align-items: flex-end;
+            position: relative;
         }
 
         .db-input-wrap {
@@ -520,6 +529,7 @@ if (isset($_POST['action'])) {
             right: 0;
             bottom: calc(100% + 8px);
             display: none;
+            width: 100%;
             max-height: 220px;
             overflow-y: auto;
             background: #0d0d14;
@@ -851,7 +861,7 @@ if (isset($_POST['action'])) {
 
         <!-- LEFT: DB LIST -->
         <div>
-            <div class="panel">
+            <div class="panel panel-databases">
                 <div class="panel-header">
                     <span class="panel-title">Databases</span>
                     <span id="db-count" class="chip">0</span>
