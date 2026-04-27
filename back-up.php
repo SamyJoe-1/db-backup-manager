@@ -8,10 +8,6 @@ session_start();
 // -------------------------------------------------------
 // AUTH
 // -------------------------------------------------------
-define('AUTH_USER', 'super_admin');
-define('AUTH_HASH', '$2a$12$5PdjWk1jyd3iUQie6inAvOJwfymebDRAzUzoqfenJwgHmBsLPjzHa');
-define('SESSION_LIFETIME', 3600);
-
 if (isset($_POST['action']) && $_POST['action'] === 'logout') {
     session_destroy();
     header('Location: ' . $_SERVER['PHP_SELF']);
