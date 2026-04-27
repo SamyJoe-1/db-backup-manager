@@ -111,6 +111,95 @@ function format_file_size($bytes) {
     return number_format($size, 2, '.', '') . ' ' . $units[$unitIndex];
 }
 
+function is_valid_db_identifier($value) {
+    return preg_match('/^[a-zA-Z0-9_]+$/', $value);
+}
+
+function get_backup_path($db, $file) {
+    if (!is_valid_db_identifier($db)) return null;
+    $path = BACKUP_DIR . $db . '/' . basename($file);
+    if (!file_exists($path) || !str_ends_with($path, '.sql.gz')) return null;
+    return $path;
+}
+
+function get_backup_tables($path) {
+    $handle = gzopen($path, 'rb');
+    if (!$handle) return [];
+
+    $tables = [];
+    while (!gzeof($handle)) {
+        $line = gzgets($handle);
+        if (preg_match('/^-- Table structure for table `([^`]+)`/', $line, $m)) {
+            $tables[] = $m[1];
+        }
+    }
+
+    gzclose($handle);
+    return array_values(array_unique($tables));
+}
+
+function extract_selected_tables_dump($path, $tables) {
+    $selected = array_fill_keys($tables, true);
+    $handle = gzopen($path, 'rb');
+    if (!$handle) return [false, 'Unable to open backup file'];
+
+    $tmp = tempnam(sys_get_temp_dir(), 'dbrestore_');
+    $writer = fopen($tmp, 'wb');
+    if (!$writer) {
+        gzclose($handle);
+        return [false, 'Unable to create temporary restore file'];
+    }
+
+    $preamble = '';
+    $section = '';
+    $currentTable = null;
+    $mode = 'preamble';
+
+    while (!gzeof($handle)) {
+        $line = gzgets($handle);
+
+        if (preg_match('/^-- Table structure for table `([^`]+)`/', $line, $m)) {
+            if ($mode === 'preamble' && $preamble !== '') {
+                fwrite($writer, $preamble);
+                $preamble = '';
+            } elseif ($mode === 'section' && $currentTable !== null && isset($selected[$currentTable])) {
+                fwrite($writer, $section);
+            }
+
+            $mode = 'section';
+            $currentTable = $m[1];
+            $section = $line;
+            continue;
+        }
+
+        if ($mode === 'section' && preg_match('/^-- (Dumping routines|Dumping events|Final view structure|Temporary table structure)/', $line)) {
+            if ($currentTable !== null && isset($selected[$currentTable])) {
+                fwrite($writer, $section);
+            }
+            $mode = 'footer';
+            $currentTable = null;
+            $section = '';
+            continue;
+        }
+
+        if ($mode === 'preamble') {
+            $preamble .= $line;
+        } elseif ($mode === 'section') {
+            $section .= $line;
+        }
+    }
+
+    if ($mode === 'preamble' && $preamble !== '') {
+        fwrite($writer, $preamble);
+    } elseif ($mode === 'section' && $currentTable !== null && isset($selected[$currentTable])) {
+        fwrite($writer, $section);
+    }
+
+    fclose($writer);
+    gzclose($handle);
+    return [true, $tmp];
+}
+
 function get_backups_for($db) {
     $dir = BACKUP_DIR . $db . '/';
     if (!is_dir($dir)) return [];
@@ -233,45 +322,91 @@ if (isset($_POST['action'])) {
 
     if ($action === 'backup_now') {
         $db = trim($_POST['db'] ?? '');
-        if (!preg_match('/^[a-zA-Z0-9_]+$/', $db)) {
+        if (!is_valid_db_identifier($db)) {
             echo json_encode(['error' => 'Invalid DB name']); exit;
         }
         $out = shell_exec("/usr/local/bin/db-backup.sh " . escapeshellarg($db) . " 2>&1");
         echo json_encode(['ok' => true, 'output' => $out]); exit;
     }
 
+    if ($action === 'list_backup_tables') {
+        $db   = trim($_POST['db'] ?? '');
+        $file = trim($_POST['file'] ?? '');
+        $path = get_backup_path($db, $file);
+        if (!$path) {
+            echo json_encode(['error' => 'Backup file not found']); exit;
+        }
+        echo json_encode(['tables' => get_backup_tables($path)]); exit;
+    }
+
     if ($action === 'restore') {
         $db   = trim($_POST['db'] ?? '');
         $file = trim($_POST['file'] ?? '');
+        $mode = trim($_POST['mode'] ?? 'full');
+        $tables = json_decode($_POST['tables'] ?? '[]', true);
 
-        if (!preg_match('/^[a-zA-Z0-9_]+$/', $db)) {
+        if (!is_valid_db_identifier($db)) {
             echo json_encode(['error' => 'Invalid DB name']); exit;
         }
 
-        $path = BACKUP_DIR . $db . '/' . basename($file);
-
-        if (!file_exists($path) || !str_ends_with($path, '.sql.gz')) {
+        $path = get_backup_path($db, $file);
+        if (!$path) {
             echo json_encode(['error' => 'Backup file not found']); exit;
         }
 
         $conn = db_connect();
+        $importPath = $path;
 
-        // Drop and recreate DB
-        $conn->query("DROP DATABASE IF EXISTS `$db`");
-        $conn->query("CREATE DATABASE `$db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        if ($mode === 'tables') {
+            if (!is_array($tables) || !$tables) {
+                $conn->close();
+                echo json_encode(['error' => 'Select at least one table']); exit;
+            }
+
+            $tables = array_values(array_filter($tables, fn($t) => is_valid_db_identifier($t)));
+            if (!$tables) {
+                $conn->close();
+                echo json_encode(['error' => 'Invalid table selection']); exit;
+            }
+
+            $conn->query("CREATE DATABASE IF NOT EXISTS `$db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            [$ok, $result] = extract_selected_tables_dump($path, $tables);
+            if (!$ok) {
+                $conn->close();
+                echo json_encode(['error' => $result]); exit;
+            }
+            $importPath = $result;
+        } else {
+            $conn->query("DROP DATABASE IF EXISTS `$db`");
+            $conn->query("CREATE DATABASE `$db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        }
         $conn->close();
 
         $cmd = sprintf(
-            'zcat %s | mysql -h %s -u %s -p%s %s 2>&1',
-            escapeshellarg($path),
+            'cat %s | mysql -h %s -u %s -p%s %s 2>&1',
+            escapeshellarg($importPath),
             escapeshellarg(DB_HOST),
             escapeshellarg(DB_USER),
             escapeshellarg(DB_PASS),
             escapeshellarg($db)
         );
 
+        if ($mode === 'full') {
+            $cmd = sprintf(
+                'zcat %s | mysql -h %s -u %s -p%s %s 2>&1',
+                escapeshellarg($path),
+                escapeshellarg(DB_HOST),
+                escapeshellarg(DB_USER),
+                escapeshellarg(DB_PASS),
+                escapeshellarg($db)
+            );
+        }
+
         $output = shell_exec($cmd);
         $success = (strpos($output ?? '', 'ERROR') === false);
+        if ($mode === 'tables' && $importPath !== $path && file_exists($importPath)) {
+            unlink($importPath);
+        }
 
         echo json_encode([
             'ok'     => $success,
@@ -818,6 +953,77 @@ if (isset($_POST['action'])) {
             margin-top: 18px;
         }
 
+        .restore-mode-switch {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .restore-mode-btn {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .restore-mode-btn.active {
+            background: rgba(0,255,136,.12);
+            border-color: rgba(0,255,136,.28);
+            color: var(--accent);
+        }
+
+        .table-restore-panel {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border);
+        }
+
+        .table-restore-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .table-restore-meta {
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .table-restore-list {
+            max-height: 240px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: rgba(255,255,255,.02);
+            padding: 8px;
+        }
+
+        .table-restore-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 4px;
+            color: var(--text);
+            font-size: 12px;
+        }
+
+        .table-restore-item:hover {
+            background: rgba(255,255,255,.03);
+        }
+
+        .table-restore-item input {
+            margin: 0;
+            accent-color: #00ff88;
+        }
+
+        .table-restore-empty {
+            color: var(--muted);
+            font-size: 11px;
+            padding: 12px 10px;
+            line-height: 1.6;
+        }
+
         /* TABS */
         .tabs {
             display: flex;
@@ -1031,6 +1237,12 @@ if (isset($_POST['action'])) {
         backups: [],
         selectedBackup: null,
         backupsPage: 1,
+        restoreMode: 'full',
+        backupTables: [],
+        backupTablesFile: null,
+        backupTablesLoading: false,
+        backupTablesError: null,
+        selectedRestoreTables: [],
     };
 
     const INTERVALS = [
@@ -1159,6 +1371,12 @@ if (isset($_POST['action'])) {
         state.selected = db;
         state.selectedBackup = null;
         state.backupsPage = 1;
+        state.restoreMode = 'full';
+        state.backupTables = [];
+        state.backupTablesFile = null;
+        state.backupTablesLoading = false;
+        state.backupTablesError = null;
+        state.selectedRestoreTables = [];
         renderDbList();
         renderRight('loading');
         const data = await api({ action: 'list_backups', db });
@@ -1254,6 +1472,12 @@ if (isset($_POST['action'])) {
 
     function closeSelectedBackup() {
         state.selectedBackup = null;
+        state.restoreMode = 'full';
+        state.backupTables = [];
+        state.backupTablesFile = null;
+        state.backupTablesLoading = false;
+        state.backupTablesError = null;
+        state.selectedRestoreTables = [];
         renderBackupModal();
         renderRight();
     }
@@ -1267,14 +1491,42 @@ if (isset($_POST['action'])) {
             return;
         }
 
+        const isTablesMode = state.restoreMode === 'tables';
+        const selectedCount = state.selectedRestoreTables.length;
+        const tableList = state.backupTablesLoading
+            ? '<div class="table-restore-empty"><span class="loader"></span> Loading tables...</div>'
+            : state.backupTablesError
+                ? `<div class="table-restore-empty">${state.backupTablesError}</div>`
+                : state.backupTables.length
+                    ? state.backupTables.map(table => `
+                    <label class="table-restore-item">
+                        <input type="checkbox" ${state.selectedRestoreTables.includes(table) ? 'checked' : ''} onchange="toggleRestoreTable('${table}')">
+                        <span>${table}</span>
+                    </label>`).join('')
+                    : '<div class="table-restore-empty">No tables were detected in this backup file.</div>';
+
+        const customRestorePanel = isTablesMode
+            ? `<div class="table-restore-panel">
+                <div class="table-restore-head">
+                    <div class="table-restore-meta">${selectedCount} table(s) selected</div>
+                    <button class="btn btn-ghost btn-sm" onclick="toggleAllRestoreTables()">${selectedCount === state.backupTables.length && selectedCount > 0 ? 'Clear All' : 'Select All'}</button>
+                </div>
+                <div class="table-restore-list">${tableList}</div>
+            </div>`
+            : '';
+
         root.innerHTML = `
         <div class="backup-modal-overlay" onclick="closeSelectedBackup()">
             <div class="backup-modal" onclick="event.stopPropagation()">
                 <div class="backup-modal-head">
-                    <div class="backup-modal-title">Backup Details</div>
+                    <div class="backup-modal-title">Restore Backup</div>
                     <button class="backup-modal-close" onclick="closeSelectedBackup()" aria-label="Close">x</button>
                 </div>
                 <div class="backup-modal-body">
+                    <div class="restore-mode-switch">
+                        <button class="btn btn-ghost restore-mode-btn ${isTablesMode ? '' : 'active'}" onclick="setRestoreMode('full')">Full Database</button>
+                        <button class="btn btn-ghost restore-mode-btn ${isTablesMode ? 'active' : ''}" onclick="setRestoreMode('tables')">Selected Tables</button>
+                    </div>
                     <div class="backup-modal-meta">
                         <div class="backup-modal-row">
                             <div class="backup-modal-label">Database</div>
@@ -1294,18 +1546,83 @@ if (isset($_POST['action'])) {
                         </div>
                     </div>
                     <div class="backup-modal-warning">
-                        You are about to restore <strong>${state.selected}</strong> from this backup.
+                        ${isTablesMode
+                            ? `You are about to restore ${selectedCount ? `<strong>${selectedCount}</strong> selected table(s)` : 'selected tables'} into <strong>${state.selected}</strong> from this backup.
                         <br><br>
-                        <strong>This will DROP all tables</strong> and reimport the database from the selected file.
+                        Existing matching tables will be replaced by the imported table definitions and data.`
+                            : `You are about to restore <strong>${state.selected}</strong> from this backup.
+                        <br><br>
+                        <strong>This will DROP all tables</strong> and reimport the database from the selected file.`}
+                        <br><br>
                         This action cannot be undone.
                     </div>
+                    ${customRestorePanel}
                     <div class="backup-modal-actions">
                         <button class="btn btn-ghost" onclick="closeSelectedBackup()">Cancel</button>
-                        <button class="btn btn-danger" onclick="doRestore()">Restore Now</button>
+                        <button class="btn btn-danger" onclick="doRestore()" ${(isTablesMode && !selectedCount) || state.backupTablesLoading ? 'disabled' : ''}>${isTablesMode ? `Restore ${selectedCount || ''} Table${selectedCount === 1 ? '' : 's'}`.trim() : 'Restore Database'}</button>
                     </div>
                 </div>
             </div>
         </div>`;
+    }
+
+    async function setRestoreMode(mode) {
+        state.restoreMode = mode;
+        renderBackupModal();
+        if (mode === 'tables') {
+            await loadBackupTables();
+        }
+    }
+
+    async function loadBackupTables() {
+        if (!state.selected || !state.selectedBackup) return;
+        if (state.backupTablesFile === state.selectedBackup.file && !state.backupTablesLoading && !state.backupTablesError) {
+            return;
+        }
+
+        state.backupTablesLoading = true;
+        state.backupTablesError = null;
+        state.backupTables = [];
+        state.selectedRestoreTables = [];
+        renderBackupModal();
+
+        const r = await api({
+            action: 'list_backup_tables',
+            db: state.selected,
+            file: state.selectedBackup.file,
+        });
+
+        state.backupTablesLoading = false;
+        if (r.error) {
+            state.backupTablesError = r.error;
+            state.backupTablesFile = null;
+            renderBackupModal();
+            return;
+        }
+
+        state.backupTables = r.tables || [];
+        state.backupTablesFile = state.selectedBackup.file;
+        state.selectedRestoreTables = [];
+        renderBackupModal();
+    }
+
+    function toggleRestoreTable(table) {
+        if (state.selectedRestoreTables.includes(table)) {
+            state.selectedRestoreTables = state.selectedRestoreTables.filter(t => t !== table);
+        } else {
+            state.selectedRestoreTables = [...state.selectedRestoreTables, table];
+        }
+        renderBackupModal();
+    }
+
+    function toggleAllRestoreTables() {
+        if (!state.backupTables.length) return;
+        if (state.selectedRestoreTables.length === state.backupTables.length) {
+            state.selectedRestoreTables = [];
+        } else {
+            state.selectedRestoreTables = [...state.backupTables];
+        }
+        renderBackupModal();
     }
 
     async function saveSchedule() {
@@ -1339,7 +1656,16 @@ if (isset($_POST['action'])) {
     }
 
     function selectBackup(backup) {
-        state.selectedBackup = state.selectedBackup?.file === backup.file ? null : backup;
+        const isSame = state.selectedBackup?.file === backup.file;
+        state.selectedBackup = isSame ? null : backup;
+        if (!isSame) {
+            state.restoreMode = 'full';
+            state.backupTables = [];
+            state.backupTablesFile = null;
+            state.backupTablesLoading = false;
+            state.backupTablesError = null;
+            state.selectedRestoreTables = [];
+        }
         renderRight();
     }
 
@@ -1360,16 +1686,25 @@ if (isset($_POST['action'])) {
         if (!state.selectedBackup) return;
         const db = state.selected;
         const file = state.selectedBackup.file;
+        const mode = state.restoreMode;
+        const tables = mode === 'tables' ? state.selectedRestoreTables : [];
+        if (mode === 'tables' && !tables.length) return;
 
         const log = document.getElementById('action-log');
         if (log) { log.classList.add('visible'); log.textContent = 'Restoring... please wait.'; }
 
-        const r = await api({ action: 'restore', db, file });
+        const r = await api({ action: 'restore', db, file, mode, tables: JSON.stringify(tables) });
 
         if (r.ok) {
-            toast('Restore completed successfully');
+            toast(mode === 'tables' ? 'Selected tables restored successfully' : 'Restore completed successfully');
             if (log) { log.textContent = r.output || 'Done.'; }
             state.selectedBackup = null;
+            state.restoreMode = 'full';
+            state.backupTables = [];
+            state.backupTablesFile = null;
+            state.backupTablesLoading = false;
+            state.backupTablesError = null;
+            state.selectedRestoreTables = [];
             renderRight();
         } else {
             toast('Restore failed — check log', 'error');
