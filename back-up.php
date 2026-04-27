@@ -709,36 +709,114 @@ if (isset($_POST['action'])) {
             gap: 8px;
         }
 
-        /* RESTORE PANEL */
-        .restore-box {
-            margin-top: 16px;
-            padding: 16px;
-            border: 1px solid rgba(255,60,110,.2);
-            border-radius: 6px;
-            background: rgba(255,60,110,.04);
-            display: none;
+        /* BACKUP MODAL */
+        .backup-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(4,6,12,.72);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 200;
         }
 
-        .restore-box.visible { display: block; }
+        .backup-modal {
+            width: min(100%, 520px);
+            background: #111118;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 10px;
+            box-shadow: 0 30px 80px rgba(0,0,0,.48);
+            overflow: hidden;
+        }
 
-        .restore-box h4 {
+        .backup-modal-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(255,255,255,.02);
+        }
+
+        .backup-modal-title {
             font-family: var(--sans);
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--danger);
-            letter-spacing: 1px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: .6px;
             text-transform: uppercase;
-            margin-bottom: 10px;
         }
 
-        .restore-warning {
-            font-size: 11px;
+        .backup-modal-close {
+            width: 30px;
+            height: 30px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: transparent;
             color: var(--muted);
-            margin-bottom: 14px;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .backup-modal-close:hover {
+            color: var(--text);
+            border-color: rgba(255,255,255,.18);
+        }
+
+        .backup-modal-body {
+            padding: 18px;
+        }
+
+        .backup-modal-meta {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .backup-modal-row {
+            display: grid;
+            grid-template-columns: 74px 1fr;
+            gap: 12px;
+            align-items: start;
+            font-size: 12px;
+        }
+
+        .backup-modal-label {
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .7px;
+            font-size: 10px;
+        }
+
+        .backup-modal-value {
+            color: var(--text);
+            word-break: break-word;
+        }
+
+        .backup-modal-warning {
+            padding: 14px;
+            border: 1px solid rgba(255,60,110,.18);
+            border-radius: 6px;
+            background: rgba(255,60,110,.05);
+            color: var(--muted);
+            font-size: 11px;
             line-height: 1.6;
         }
 
-        .restore-warning strong { color: var(--danger); }
+        .backup-modal-warning strong {
+            color: var(--danger);
+        }
+
+        .backup-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 18px;
+        }
 
         /* TABS */
         .tabs {
