@@ -1,3 +1,8 @@
+```text
+█▀▄▀█ █▀█ ░ █▀ ▄▀█ █▀▄▀█ █▄█ ░░█ █▀█ █▀▀   ▄▄   █▄▄ ▄▀█ █▀▀ █▄▀ █░█ █▀█   █▀▄▀█ ▄▀█ █▄░█ ▄▀█ █▀▀ █▀▀ █▀█
+█░▀░█ █▀▄ ▄ ▄█ █▀█ █░▀░█ ░█░ █▄█ █▄█ ██▄   ░░   █▄█ █▀█ █▄▄ █░█ █▄█ █▀▀   █░▀░█ █▀█ █░▀█ █▀█ █▄█ ██▄ █▀▄
+```
+
 # DB Backup Manager
 
 Automated database backup manager with a web UI, scheduling, and Google Drive upload.
@@ -6,7 +11,13 @@ Automated database backup manager with a web UI, scheduling, and Google Drive up
 
 ## Features
 
-- PHP web UI to manage databases, schedules, and restores
+- PHP web UI to manage databases, schedules, restores, and backup files
+- Database search suggestions when adding new databases
+- Full database restore from a selected backup file
+- Selected-table restore from a selected backup file with multi-select support
+- Paginated backup browser with 10 records per page
+- Scrollable backup list for large backup histories
+- Smart file size formatting (`KB`, `MB`, `GB`, `TB`) with 2 decimal places
 - Auto backup via cron on schedules set in the UI
 - Auto upload backups to Google Drive daily at 23:50
 - Retains last 30 backups per database, auto-deletes older ones
@@ -28,7 +39,7 @@ Automated database backup manager with a web UI, scheduling, and Google Drive up
 ## Install
 
 ```bash
-bash <(curl -sSL https://backup-manager.netlify.app/install.sh)
+bash <(curl -fsSL https://backup-manager.netlify.app/install.sh)
 ```
 
 The installer will ask you for:
@@ -48,8 +59,26 @@ The installer will ask you for:
 To pull the latest version without touching your config:
 
 ```bash
-bash <(curl -sSL https://backup-manager.netlify.app/update.sh)
+bash <(curl -fsSL https://backup-manager.netlify.app/update.sh)
 ```
+
+---
+
+## Restore Modes
+
+- `Full Database`: drops the target database and restores the entire selected backup file
+- `Selected Tables`: reads the selected backup file, lists its tables, and restores only the tables you choose
+
+Selected-table restore supports multi-select so you can restore several tables in one shot from the same backup.
+
+---
+
+## Backup Browser
+
+- Shows backups in a scrollable container
+- Paginates backup history at 10 records per page
+- Opens restore actions in a modal instead of burying them under long lists
+- Displays file sizes in the most suitable unit automatically
 
 ---
 
