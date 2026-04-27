@@ -28,7 +28,7 @@ Automated database backup manager with a web UI, scheduling, and Google Drive up
 ## Install
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/SamyJoe-1/db-backup-manager/main/install.sh)
+bash <(curl -sSL https://backup-manager.netlify.app/install.sh)
 ```
 
 The installer will ask you for:
@@ -48,7 +48,7 @@ The installer will ask you for:
 To pull the latest version without touching your config:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/SamyJoe-1/db-backup-manager/main/update.sh)
+bash <(curl -sSL https://backup-manager.netlify.app/update.sh)
 ```
 
 ---

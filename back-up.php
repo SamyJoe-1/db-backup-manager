@@ -51,8 +51,6 @@ if (
             button{width:100%;background:#00ff88;border:none;border-radius:8px;padding:12px;color:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:1px}
             button:hover{background:#00ff88}
             .error{color:#ff6b6b;font-size:12px;margin-bottom:14px}
-            .db-suggestion-item {padding: 8px 12px;cursor: pointer;font-size: 12px;color: var(--text);transition: background .1s;}
-            .db-suggestion-item:hover { background: rgba(0,255,136,.08); color: var(--accent); }
         </style>
     </head>
     <body>
@@ -508,6 +506,46 @@ if (isset($_POST['action'])) {
             margin-top: 12px;
             padding-top: 12px;
             border-top: 1px solid var(--border);
+            align-items: flex-end;
+        }
+
+        .db-input-wrap {
+            position: relative;
+            flex: 1;
+        }
+
+        .db-suggestions {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: calc(100% + 8px);
+            display: none;
+            max-height: 220px;
+            overflow-y: auto;
+            background: #0d0d14;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 6px;
+            box-shadow: 0 18px 40px rgba(0,0,0,.42);
+            padding: 6px;
+            z-index: 60;
+        }
+
+        .db-suggestion-item {
+            display: flex;
+            align-items: center;
+            min-height: 36px;
+            padding: 8px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text);
+            line-height: 1.35;
+            transition: background .12s ease, color .12s ease;
+        }
+
+        .db-suggestion-item:hover {
+            background: rgba(0,255,136,.08);
+            color: var(--accent);
         }
 
         /* INPUTS */
@@ -820,13 +858,11 @@ if (isset($_POST['action'])) {
                 </div>
                 <div class="panel-body">
                     <div id="db-list"><div class="empty">Loading...</div></div>
-                    <div class="add-form" style="position:relative">
-                        <input type="text" id="new-db-input" placeholder="Search database..." autocomplete="off" />
-                        <div id="db-suggestions" style="
-                            display:none; position:absolute; left:0; right:0; top:100%;
-                            background:var(--surface); border:1px solid var(--border);
-                            border-top:none; border-radius:0 0 4px 4px; z-index:50; max-height:180px; overflow-y:auto;
-                        "></div>
+                    <div class="add-form">
+                        <div class="db-input-wrap">
+                            <div id="db-suggestions" class="db-suggestions"></div>
+                            <input type="text" id="new-db-input" placeholder="Search database..." autocomplete="off" />
+                        </div>
                         <button class="btn btn-primary btn-sm" onclick="addDb()">+ Add</button>
                     </div>
                 </div>
