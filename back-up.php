@@ -55,6 +55,8 @@ if (
             button{width:100%;background:#00ff88;border:none;border-radius:8px;padding:12px;color:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:1px}
             button:hover{background:#00ff88}
             .error{color:#ff6b6b;font-size:12px;margin-bottom:14px}
+            .db-suggestion-item {padding: 8px 12px;cursor: pointer;font-size: 12px;color: var(--text);transition: background .1s;}
+            .db-suggestion-item:hover { background: rgba(0,255,136,.08); color: var(--accent); }
         </style>
     </head>
     <body>
@@ -176,6 +178,14 @@ if (isset($_POST['action'])) {
         if (!preg_match('/^[a-zA-Z0-9_]+$/', $db)) {
             echo json_encode(['error' => 'Invalid DB name']); exit;
         }
+        // Verify DB actually exists on the server
+        $conn = db_connect();
+        $res = $conn->query("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '" . $conn->real_escape_string($db) . "'");
+        if (!$res || $res->num_rows === 0) {
+            $conn->close();
+            echo json_encode(['error' => "Database '{$db}' does not exist on this server"]); exit;
+        }
+        $conn->close();
         $list = get_databases();
         if (!in_array($db, $list)) $list[] = $db;
         save_json(DB_LIST_FILE, $list);
@@ -270,6 +280,17 @@ if (isset($_POST['action'])) {
         $path = BACKUP_DIR . $db . '/' . basename($file);
         if (file_exists($path)) unlink($path);
         echo json_encode(['ok' => true]); exit;
+    }
+
+    if ($action === 'search_dbs') {
+        $q = trim($_POST['q'] ?? '');
+        $conn = db_connect();
+        $safe = $conn->real_escape_string($q);
+        $res = $conn->query("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME LIKE '%{$safe}%' ORDER BY SCHEMA_NAME LIMIT 20");
+        $dbs = [];
+        while ($row = $res->fetch_assoc()) $dbs[] = $row['SCHEMA_NAME'];
+        $conn->close();
+        echo json_encode(['dbs' => $dbs]); exit;
     }
 
     echo json_encode(['error' => 'Unknown action']);
@@ -803,8 +824,13 @@ if (isset($_POST['action'])) {
                 </div>
                 <div class="panel-body">
                     <div id="db-list"><div class="empty">Loading...</div></div>
-                    <div class="add-form">
-                        <input type="text" id="new-db-input" placeholder="database_name" />
+                    <div class="add-form" style="position:relative">
+                        <input type="text" id="new-db-input" placeholder="Search database..." autocomplete="off" />
+                        <div id="db-suggestions" style="
+                            display:none; position:absolute; left:0; right:0; top:100%;
+                            background:var(--surface); border:1px solid var(--border);
+                            border-top:none; border-radius:0 0 4px 4px; z-index:50; max-height:180px; overflow-y:auto;
+                        "></div>
                         <button class="btn btn-primary btn-sm" onclick="addDb()">+ Add</button>
                     </div>
                 </div>
@@ -852,6 +878,9 @@ if (isset($_POST['action'])) {
         { val: 'weekly', label: 'Weekly (Sunday 2 AM)' },
     ];
 
+    let _selectedFromSuggestion = false;
+    let _searchTimer = null;
+
     // -------------------------------------------------------
     async function api(payload) {
         const fd = new FormData();
@@ -896,6 +925,45 @@ if (isset($_POST['action'])) {
         }).join('');
     }
 
+    document.getElementById('new-db-input').addEventListener('input', function() {
+        const q = this.value.trim();
+        _selectedFromSuggestion = false;
+        clearTimeout(_searchTimer);
+        if (!q) { hideSuggestions(); return; }
+        _searchTimer = setTimeout(() => fetchSuggestions(q), 250);
+    });
+
+    document.getElementById('new-db-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') addDb();
+        if (e.key === 'Escape') hideSuggestions();
+    });
+
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.add-form')) hideSuggestions();
+    });
+
+    async function fetchSuggestions(q) {
+        const r = await api({ action: 'search_dbs', q });
+        const box = document.getElementById('db-suggestions');
+        const existing = state.dbs;
+        const results = (r.dbs || []).filter(d => !existing.includes(d));
+        if (!results.length) { hideSuggestions(); return; }
+        box.innerHTML = results.map(d =>
+            `<div class="db-suggestion-item" onclick="pickSuggestion('${d}')">${d}</div>`
+        ).join('');
+        box.style.display = 'block';
+    }
+
+    function pickSuggestion(db) {
+        document.getElementById('new-db-input').value = db;
+        _selectedFromSuggestion = true;
+        hideSuggestions();
+    }
+
+    function hideSuggestions() {
+        document.getElementById('db-suggestions').style.display = 'none';
+    }
+
     async function addDb() {
         const input = document.getElementById('new-db-input');
         const db = input.value.trim();
@@ -903,13 +971,11 @@ if (isset($_POST['action'])) {
         const r = await api({ action: 'add_db', db });
         if (r.error) { toast(r.error, 'error'); return; }
         input.value = '';
+        _selectedFromSuggestion = false;
+        hideSuggestions();
         await loadDbs();
         toast(`${db} added`);
     }
-
-    document.getElementById('new-db-input').addEventListener('keydown', e => {
-        if (e.key === 'Enter') addDb();
-    });
 
     async function removeDb(e, db) {
         e.stopPropagation();
