@@ -1,6 +1,6 @@
 #!/bin/bash
 # -------------------------------------------------------
-# DB Backup Manager — Installer
+# DB Backup Manager â€” Installer
 # Usage: curl -sSL -H "Authorization: token TOKEN" \
 #   https://raw.githubusercontent.com/SamyJoe-1/db-backup-manager/main/install.sh | bash
 # -------------------------------------------------------
@@ -11,8 +11,10 @@ PHP_FPM=$(systemctl list-units --type=service | grep -o 'php[0-9.]*-fpm' | head 
 PHP_SOCK=$(find /run/php/ -name "php*-fpm.sock" | grep -v "^/run/php/php-fpm.sock" | head -1)
 
 TOKEN="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"
-REPO="https://raw.githubusercontent.com/SamyJoe-1/db-backup-manager/main"
-AUTH="-H \"Authorization: token $TOKEN\""
+OWNER="SamyJoe-1"
+REPO="db-backup-manager"
+BRANCH="main"
+API_URL="https://api.github.com/repos/$OWNER/$REPO/contents"
 
 echo "=== DB Backup Manager Installer ==="
 
@@ -31,11 +33,23 @@ AUTH_HASH=$(php -r "echo password_hash('$AUTH_PASS', PASSWORD_BCRYPT, ['cost'=>1
 mkdir -p /var/www/dbbackup /home/backups /etc/dbbackup
 chmod 750 /home/backups /etc/dbbackup
 
+fetch_file() {
+    local remote_path="$1"
+    local target_path="$2"
+    curl -fsSL \
+        -H "Accept: application/vnd.github.raw" \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        -H "User-Agent: db-backup-manager-installer" \
+        "$API_URL/$remote_path?ref=$BRANCH" \
+        -o "$target_path"
+}
+
 # ---- Download files ----
-curl -fsSL -H "Authorization: token $TOKEN" "$REPO/back-up.php"          -o /var/www/dbbackup/back-up.php
-curl -fsSL -H "Authorization: token $TOKEN" "$REPO/db-backup.sh"         -o /usr/local/bin/db-backup.sh
-curl -fsSL -H "Authorization: token $TOKEN" "$REPO/backup-to-drive.sh"   -o /usr/local/bin/backup-to-drive.sh
-curl -fsSL -H "Authorization: token $TOKEN" "$REPO/sync-nginx-ips.sh"    -o /usr/local/bin/sync-nginx-ips.sh
+fetch_file "back-up.php" "/var/www/dbbackup/back-up.php"
+fetch_file "db-backup.sh" "/usr/local/bin/db-backup.sh"
+fetch_file "backup-to-drive.sh" "/usr/local/bin/backup-to-drive.sh"
+fetch_file "sync-nginx-ips.sh" "/usr/local/bin/sync-nginx-ips.sh"
 
 chmod +x /usr/local/bin/db-backup.sh /usr/local/bin/backup-to-drive.sh /usr/local/bin/sync-nginx-ips.sh
 sed -i 's/\r//' /usr/local/bin/db-backup.sh /usr/local/bin/backup-to-drive.sh /usr/local/bin/sync-nginx-ips.sh
