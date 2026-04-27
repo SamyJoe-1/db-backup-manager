@@ -108,8 +108,7 @@ function format_file_size($bytes) {
         $unitIndex++;
     }
 
-    $precision = $size >= 100 ? 0 : ($size >= 10 ? 1 : 2);
-    return round($size, $precision) . ' ' . $units[$unitIndex];
+    return number_format($size, 2, '.', '') . ' ' . $units[$unitIndex];
 }
 
 function get_backups_for($db) {
