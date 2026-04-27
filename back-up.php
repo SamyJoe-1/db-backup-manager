@@ -1021,6 +1021,7 @@ if (isset($_POST['action'])) {
 
 <!-- TOASTS -->
 <div class="toast-wrap" id="toasts"></div>
+<div id="backup-modal-root"></div>
 
 <script>
     let state = {
@@ -1172,11 +1173,13 @@ if (isset($_POST['action'])) {
 
         if (!db) {
             content.innerHTML = '<div class="right-empty">← Select a database from the list<br><span style="font-size:11px">to manage backups &amp; schedule</span></div>';
+            renderBackupModal();
             return;
         }
 
         if (loading) {
             content.innerHTML = '<div class="right-empty"><span class="loader"></span> Loading...</div>';
+            renderBackupModal();
             return;
         }
 
@@ -1216,47 +1219,6 @@ if (isset($_POST['action'])) {
         </div>`
             : '';
 
-        const selectedBackupModal = state.selectedBackup
-            ? `<div class="backup-modal-overlay" onclick="closeSelectedBackup()">
-            <div class="backup-modal" onclick="event.stopPropagation()">
-                <div class="backup-modal-head">
-                    <div class="backup-modal-title">Backup Details</div>
-                    <button class="backup-modal-close" onclick="closeSelectedBackup()" aria-label="Close">×</button>
-                </div>
-                <div class="backup-modal-body">
-                    <div class="backup-modal-meta">
-                        <div class="backup-modal-row">
-                            <div class="backup-modal-label">Database</div>
-                            <div class="backup-modal-value">${db}</div>
-                        </div>
-                        <div class="backup-modal-row">
-                            <div class="backup-modal-label">File</div>
-                            <div class="backup-modal-value"><code style="color:var(--accent3)">${state.selectedBackup.file}</code></div>
-                        </div>
-                        <div class="backup-modal-row">
-                            <div class="backup-modal-label">Created</div>
-                            <div class="backup-modal-value">${state.selectedBackup.date}</div>
-                        </div>
-                        <div class="backup-modal-row">
-                            <div class="backup-modal-label">Size</div>
-                            <div class="backup-modal-value">${state.selectedBackup.size}</div>
-                        </div>
-                    </div>
-                    <div class="backup-modal-warning">
-                        You are about to restore <strong>${db}</strong> from this backup.
-                        <br><br>
-                        <strong>This will DROP all tables</strong> and reimport the database from the selected file.
-                        This action cannot be undone.
-                    </div>
-                    <div class="backup-modal-actions">
-                        <button class="btn btn-ghost" onclick="closeSelectedBackup()">Cancel</button>
-                        <button class="btn btn-danger" onclick="doRestore()">Restore Now</button>
-                    </div>
-                </div>
-            </div>
-           </div>`
-            : '';
-
         content.innerHTML = `
         <div class="db-big-name">${db}</div>
         <div class="db-meta">Schedule: <strong style="color:var(--text)">${
@@ -1279,9 +1241,9 @@ if (isset($_POST['action'])) {
 
         <div class="backups-list">${backupRows}</div>
         ${backupFooter}
-        ${selectedBackupModal}
         <div class="log" id="action-log"></div>
     `;
+        renderBackupModal();
     }
 
     function changeBackupsPage(delta) {
@@ -1292,7 +1254,58 @@ if (isset($_POST['action'])) {
 
     function closeSelectedBackup() {
         state.selectedBackup = null;
+        renderBackupModal();
         renderRight();
+    }
+
+    function renderBackupModal() {
+        const root = document.getElementById('backup-modal-root');
+        if (!root) return;
+
+        if (!state.selectedBackup || !state.selected) {
+            root.innerHTML = '';
+            return;
+        }
+
+        root.innerHTML = `
+        <div class="backup-modal-overlay" onclick="closeSelectedBackup()">
+            <div class="backup-modal" onclick="event.stopPropagation()">
+                <div class="backup-modal-head">
+                    <div class="backup-modal-title">Backup Details</div>
+                    <button class="backup-modal-close" onclick="closeSelectedBackup()" aria-label="Close">x</button>
+                </div>
+                <div class="backup-modal-body">
+                    <div class="backup-modal-meta">
+                        <div class="backup-modal-row">
+                            <div class="backup-modal-label">Database</div>
+                            <div class="backup-modal-value">${state.selected}</div>
+                        </div>
+                        <div class="backup-modal-row">
+                            <div class="backup-modal-label">File</div>
+                            <div class="backup-modal-value"><code style="color:var(--accent3)">${state.selectedBackup.file}</code></div>
+                        </div>
+                        <div class="backup-modal-row">
+                            <div class="backup-modal-label">Created</div>
+                            <div class="backup-modal-value">${state.selectedBackup.date}</div>
+                        </div>
+                        <div class="backup-modal-row">
+                            <div class="backup-modal-label">Size</div>
+                            <div class="backup-modal-value">${state.selectedBackup.size}</div>
+                        </div>
+                    </div>
+                    <div class="backup-modal-warning">
+                        You are about to restore <strong>${state.selected}</strong> from this backup.
+                        <br><br>
+                        <strong>This will DROP all tables</strong> and reimport the database from the selected file.
+                        This action cannot be undone.
+                    </div>
+                    <div class="backup-modal-actions">
+                        <button class="btn btn-ghost" onclick="closeSelectedBackup()">Cancel</button>
+                        <button class="btn btn-danger" onclick="doRestore()">Restore Now</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
     }
 
     async function saveSchedule() {
