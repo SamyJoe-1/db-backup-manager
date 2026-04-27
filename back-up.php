@@ -1216,16 +1216,44 @@ if (isset($_POST['action'])) {
         </div>`
             : '';
 
-        const restoreSelected = state.selectedBackup
-            ? `<div class="restore-box visible">
-            <h4>⚠ Confirm Restore</h4>
-            <div class="restore-warning">
-                You are about to restore <strong>${db}</strong> from:<br>
-                <code style="color:var(--accent3)">${state.selectedBackup.file}</code><br><br>
-                <strong>This will DROP all tables</strong> and reimport from the backup.<br>
-                This action cannot be undone.
+        const selectedBackupModal = state.selectedBackup
+            ? `<div class="backup-modal-overlay" onclick="closeSelectedBackup()">
+            <div class="backup-modal" onclick="event.stopPropagation()">
+                <div class="backup-modal-head">
+                    <div class="backup-modal-title">Backup Details</div>
+                    <button class="backup-modal-close" onclick="closeSelectedBackup()" aria-label="Close">×</button>
+                </div>
+                <div class="backup-modal-body">
+                    <div class="backup-modal-meta">
+                        <div class="backup-modal-row">
+                            <div class="backup-modal-label">Database</div>
+                            <div class="backup-modal-value">${db}</div>
+                        </div>
+                        <div class="backup-modal-row">
+                            <div class="backup-modal-label">File</div>
+                            <div class="backup-modal-value"><code style="color:var(--accent3)">${state.selectedBackup.file}</code></div>
+                        </div>
+                        <div class="backup-modal-row">
+                            <div class="backup-modal-label">Created</div>
+                            <div class="backup-modal-value">${state.selectedBackup.date}</div>
+                        </div>
+                        <div class="backup-modal-row">
+                            <div class="backup-modal-label">Size</div>
+                            <div class="backup-modal-value">${state.selectedBackup.size}</div>
+                        </div>
+                    </div>
+                    <div class="backup-modal-warning">
+                        You are about to restore <strong>${db}</strong> from this backup.
+                        <br><br>
+                        <strong>This will DROP all tables</strong> and reimport the database from the selected file.
+                        This action cannot be undone.
+                    </div>
+                    <div class="backup-modal-actions">
+                        <button class="btn btn-ghost" onclick="closeSelectedBackup()">Cancel</button>
+                        <button class="btn btn-danger" onclick="doRestore()">Restore Now</button>
+                    </div>
+                </div>
             </div>
-            <button class="btn btn-danger" onclick="doRestore()">🔁 Restore Now</button>
            </div>`
             : '';
 
@@ -1251,7 +1279,7 @@ if (isset($_POST['action'])) {
 
         <div class="backups-list">${backupRows}</div>
         ${backupFooter}
-        ${restoreSelected}
+        ${selectedBackupModal}
         <div class="log" id="action-log"></div>
     `;
     }
@@ -1259,6 +1287,11 @@ if (isset($_POST['action'])) {
     function changeBackupsPage(delta) {
         const totalPages = Math.max(1, Math.ceil(state.backups.length / BACKUPS_PER_PAGE));
         state.backupsPage = Math.min(totalPages, Math.max(1, state.backupsPage + delta));
+        renderRight();
+    }
+
+    function closeSelectedBackup() {
+        state.selectedBackup = null;
         renderRight();
     }
 
@@ -1314,7 +1347,6 @@ if (isset($_POST['action'])) {
         if (!state.selectedBackup) return;
         const db = state.selected;
         const file = state.selectedBackup.file;
-        if (!confirm(`FINAL WARNING: Drop all tables in "${db}" and restore from\n${file}?`)) return;
 
         const log = document.getElementById('action-log');
         if (log) { log.classList.add('visible'); log.textContent = 'Restoring... please wait.'; }
