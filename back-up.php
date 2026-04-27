@@ -98,6 +98,20 @@ function get_schedules() {
     return load_json(SCHEDULE_FILE, []);
 }
 
+function format_file_size($bytes) {
+    $units = ['KB', 'MB', 'GB', 'TB'];
+    $size = max($bytes / 1024, 0);
+    $unitIndex = 0;
+
+    while ($size >= 1024 && $unitIndex < count($units) - 1) {
+        $size /= 1024;
+        $unitIndex++;
+    }
+
+    $precision = $size >= 100 ? 0 : ($size >= 10 ? 1 : 2);
+    return round($size, $precision) . ' ' . $units[$unitIndex];
+}
+
 function get_backups_for($db) {
     $dir = BACKUP_DIR . $db . '/';
     if (!is_dir($dir)) return [];
@@ -107,7 +121,7 @@ function get_backups_for($db) {
     return array_map(fn($f) => [
         'file'    => basename($f),
         'path'    => $f,
-        'size'    => round(filesize($f) / 1024, 1) . ' KB',
+        'size'    => format_file_size(filesize($f)),
         'date'    => date('Y-m-d H:i:s', filemtime($f)),
         'ts'      => filemtime($f),
     ], $files);
@@ -639,7 +653,21 @@ if (isset($_POST['action'])) {
         }
 
         /* BACKUPS TABLE */
-        .backups-list { margin-top: 8px; }
+        .backups-list {
+            margin-top: 8px;
+            max-height: 456px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .backups-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .backups-list::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,.12);
+            border-radius: 999px;
+        }
 
         .backup-row {
             display: flex;
@@ -663,6 +691,24 @@ if (isset($_POST['action'])) {
         .backup-del { color: var(--danger); opacity: 0; cursor: pointer; padding: 2px 4px; font-size: 14px; transition: opacity .15s; }
         .backup-row:hover .backup-del { opacity: 0.7; }
         .backup-del:hover { opacity: 1 !important; }
+
+        .backups-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 10px;
+        }
+
+        .backups-page-info {
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .backups-pagination {
+            display: flex;
+            gap: 8px;
+        }
 
         /* RESTORE PANEL */
         .restore-box {
@@ -906,6 +952,7 @@ if (isset($_POST['action'])) {
         selected: null,
         backups: [],
         selectedBackup: null,
+        backupsPage: 1,
     };
 
     const INTERVALS = [
@@ -919,6 +966,7 @@ if (isset($_POST['action'])) {
         { val: '24h',  label: 'Every day (2 AM)' },
         { val: 'weekly', label: 'Weekly (Sunday 2 AM)' },
     ];
+    const BACKUPS_PER_PAGE = 10;
 
     let _selectedFromSuggestion = false;
     let _searchTimer = null;
@@ -1032,6 +1080,7 @@ if (isset($_POST['action'])) {
     async function selectDb(db) {
         state.selected = db;
         state.selectedBackup = null;
+        state.backupsPage = 1;
         renderDbList();
         renderRight('loading');
         const data = await api({ action: 'list_backups', db });
@@ -1056,13 +1105,19 @@ if (isset($_POST['action'])) {
 
         const sched = state.schedules[db] || 'none';
         const backups = state.backups;
+        const totalBackups = backups.length;
+        const totalPages = Math.max(1, Math.ceil(totalBackups / BACKUPS_PER_PAGE));
+        const currentPage = Math.min(state.backupsPage, totalPages);
+        const startIndex = (currentPage - 1) * BACKUPS_PER_PAGE;
+        const visibleBackups = backups.slice(startIndex, startIndex + BACKUPS_PER_PAGE);
+        state.backupsPage = currentPage;
 
         const schedOptions = INTERVALS.map(i =>
             `<option value="${i.val}" ${sched === i.val ? 'selected' : ''}>${i.label}</option>`
         ).join('');
 
-        const backupRows = backups.length
-            ? backups.map(b => `
+        const backupRows = totalBackups
+            ? visibleBackups.map(b => `
             <div class="backup-row ${state.selectedBackup?.file === b.file ? 'selected' : ''}"
                  onclick="selectBackup(${JSON.stringify(b).replace(/"/g, '&quot;')})">
                 <div style="flex:1">
@@ -1073,6 +1128,16 @@ if (isset($_POST['action'])) {
                 <div class="backup-del" onclick="deleteBackup(event,'${b.file}')">🗑</div>
             </div>`).join('')
             : '<div class="empty">No backups found for this database.</div>';
+
+        const backupFooter = totalBackups
+            ? `<div class="backups-footer">
+            <div class="backups-page-info">Showing ${startIndex + 1}-${Math.min(startIndex + visibleBackups.length, totalBackups)} of ${totalBackups}</div>
+            <div class="backups-pagination">
+                <button class="btn btn-ghost btn-sm" onclick="changeBackupsPage(-1)" ${currentPage === 1 ? 'disabled' : ''}>Prev</button>
+                <button class="btn btn-ghost btn-sm" onclick="changeBackupsPage(1)" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+            </div>
+        </div>`
+            : '';
 
         const restoreSelected = state.selectedBackup
             ? `<div class="restore-box visible">
@@ -1108,9 +1173,16 @@ if (isset($_POST['action'])) {
         </div>
 
         <div class="backups-list">${backupRows}</div>
+        ${backupFooter}
         ${restoreSelected}
         <div class="log" id="action-log"></div>
     `;
+    }
+
+    function changeBackupsPage(delta) {
+        const totalPages = Math.max(1, Math.ceil(state.backups.length / BACKUPS_PER_PAGE));
+        state.backupsPage = Math.min(totalPages, Math.max(1, state.backupsPage + delta));
+        renderRight();
     }
 
     async function saveSchedule() {
@@ -1132,6 +1204,7 @@ if (isset($_POST['action'])) {
             toast('Backup completed');
             const data = await api({ action: 'list_backups', db });
             state.backups = data.backups || [];
+            state.backupsPage = 1;
             renderRight();
             if (r.output) {
                 const l = document.getElementById('action-log');
@@ -1154,6 +1227,8 @@ if (isset($_POST['action'])) {
         state.selectedBackup = null;
         const data = await api({ action: 'list_backups', db: state.selected });
         state.backups = data.backups || [];
+        const totalPages = Math.max(1, Math.ceil(state.backups.length / BACKUPS_PER_PAGE));
+        state.backupsPage = Math.min(state.backupsPage, totalPages);
         renderRight();
         toast('Backup deleted');
     }
