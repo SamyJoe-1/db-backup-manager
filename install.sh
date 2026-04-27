@@ -10,11 +10,10 @@ set -e
 PHP_FPM=$(systemctl list-units --type=service | grep -o 'php[0-9.]*-fpm' | head -1)
 PHP_SOCK=$(find /run/php/ -name "php*-fpm.sock" | grep -v "^/run/php/php-fpm.sock" | head -1)
 
-TOKEN="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"
 OWNER="SamyJoe-1"
 REPO="db-backup-manager"
 BRANCH="main"
-API_URL="https://api.github.com/repos/$OWNER/$REPO/contents"
+RAW_BASE="https://raw.githubusercontent.com/$OWNER/$REPO/$BRANCH"
 
 echo "=== DB Backup Manager Installer ==="
 
@@ -36,13 +35,7 @@ chmod 750 /home/backups /etc/dbbackup
 fetch_file() {
     local remote_path="$1"
     local target_path="$2"
-    curl -fsSL \
-        -H "Accept: application/vnd.github.raw" \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        -H "User-Agent: db-backup-manager-installer" \
-        "$API_URL/$remote_path?ref=$BRANCH" \
-        -o "$target_path"
+    curl -fsSL "$RAW_BASE/$remote_path" -o "$target_path"
 }
 
 # ---- Download files ----

@@ -6,24 +6,17 @@
 
 set -e
 
-TOKEN="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"
 OWNER="SamyJoe-1"
 REPO="db-backup-manager"
 BRANCH="main"
-API_URL="https://api.github.com/repos/$OWNER/$REPO/contents"
+RAW_BASE="https://raw.githubusercontent.com/$OWNER/$REPO/$BRANCH"
 
 echo "=== DB Backup Manager Updater ==="
 
 fetch_file() {
     local remote_path="$1"
     local target_path="$2"
-    curl -fsSL \
-        -H "Accept: application/vnd.github.raw" \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        -H "User-Agent: db-backup-manager-updater" \
-        "$API_URL/$remote_path?ref=$BRANCH" \
-        -o "$target_path"
+    curl -fsSL "$RAW_BASE/$remote_path" -o "$target_path"
 }
 
 fetch_file "back-up.php" "/var/www/dbbackup/back-up.php"
