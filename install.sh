@@ -32,10 +32,10 @@ mkdir -p /var/www/dbbackup /home/backups /etc/dbbackup
 chmod 750 /home/backups /etc/dbbackup
 
 # ---- Download files ----
-curl -sSL -H "Authorization: token $TOKEN" "$REPO/back-up.php"          -o /var/www/dbbackup/back-up.php
-curl -sSL -H "Authorization: token $TOKEN" "$REPO/db-backup.sh"         -o /usr/local/bin/db-backup.sh
-curl -sSL -H "Authorization: token $TOKEN" "$REPO/backup-to-drive.sh"   -o /usr/local/bin/backup-to-drive.sh
-curl -sSL -H "Authorization: token $TOKEN" "$REPO/sync-nginx-ips.sh"    -o /usr/local/bin/sync-nginx-ips.sh
+curl -fsSL -H "Authorization: token $TOKEN" "$REPO/back-up.php"          -o /var/www/dbbackup/back-up.php
+curl -fsSL -H "Authorization: token $TOKEN" "$REPO/db-backup.sh"         -o /usr/local/bin/db-backup.sh
+curl -fsSL -H "Authorization: token $TOKEN" "$REPO/backup-to-drive.sh"   -o /usr/local/bin/backup-to-drive.sh
+curl -fsSL -H "Authorization: token $TOKEN" "$REPO/sync-nginx-ips.sh"    -o /usr/local/bin/sync-nginx-ips.sh
 
 chmod +x /usr/local/bin/db-backup.sh /usr/local/bin/backup-to-drive.sh /usr/local/bin/sync-nginx-ips.sh
 sed -i 's/\r//' /usr/local/bin/db-backup.sh /usr/local/bin/backup-to-drive.sh /usr/local/bin/sync-nginx-ips.sh
