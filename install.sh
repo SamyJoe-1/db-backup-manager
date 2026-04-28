@@ -43,6 +43,7 @@ fetch_file "back-up.php" "/var/www/dbbackup/back-up.php"
 fetch_file "db-backup.sh" "/usr/local/bin/db-backup.sh"
 fetch_file "backup-to-drive.sh" "/usr/local/bin/backup-to-drive.sh"
 fetch_file "sync-nginx-ips.sh" "/usr/local/bin/sync-nginx-ips.sh"
+fetch_file "nginx-backup.conf" "/tmp/dbbackup.nginx.conf"
 
 chmod +x /usr/local/bin/db-backup.sh /usr/local/bin/backup-to-drive.sh /usr/local/bin/sync-nginx-ips.sh
 sed -i 's/\r//' /usr/local/bin/db-backup.sh /usr/local/bin/backup-to-drive.sh /usr/local/bin/sync-nginx-ips.sh
@@ -77,31 +78,10 @@ define('SESSION_LIFETIME', 3600);
 EOF
 
 # ---- Write nginx conf ----
-cat > /etc/nginx/sites-available/dbbackup <<EOF
-server {
-    listen $APP_PORT;
-
-    root /var/www/dbbackup;
-    index back-up.php;
-
-    location / {
-        try_files \$uri \$uri/ /back-up.php?\$query_string;
-    }
-
-    location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:$PHP_SOCK;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        include fastcgi_params;
-    }
-
-    location ~ \.php-config$ { deny all; }
-    location ~ /\.ht { deny all; }
-
-    error_log /var/log/nginx/dbbackup_error.log;
-    access_log /var/log/nginx/dbbackup_access.log;
-}
-EOF
+sed \
+    -e "s|__APP_PORT__|$APP_PORT|g" \
+    -e "s|__PHP_SOCK__|$PHP_SOCK|g" \
+    /tmp/dbbackup.nginx.conf > /etc/nginx/sites-available/dbbackup
 
 ln -sf /etc/nginx/sites-available/dbbackup /etc/nginx/sites-enabled/dbbackup
 
