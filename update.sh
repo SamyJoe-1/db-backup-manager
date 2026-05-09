@@ -19,6 +19,12 @@ fetch_file() {
     curl -fsSL "$RAW_BASE/$remote_path" -o "$target_path"
 }
 
+# Add RETENTION_FILE to config if missing
+if ! grep -q "RETENTION_FILE" /etc/dbbackup/config.php; then
+    echo "define('RETENTION_FILE', '/etc/dbbackup/retention.json');" >> /etc/dbbackup/config.php
+    echo "Added RETENTION_FILE to config"
+fi
+
 fetch_file "back-up.php" "/var/www/dbbackup/back-up.php"
 fetch_file "db-backup.sh" "/usr/local/bin/db-backup.sh"
 fetch_file "backup-to-drive.sh" "/usr/local/bin/backup-to-drive.sh"
