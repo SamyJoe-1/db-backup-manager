@@ -1493,6 +1493,11 @@ if (isset($_POST['action'])) {
 
         <div class="section-title">Auto Backup Schedule</div>
         <div class="schedule-row">
+            <div class="schedule-label">Run backup</div>
+            <select id="sched-select" style="width:200px">${schedOptions}</select>
+            <button class="btn btn-ghost btn-sm" onclick="saveSchedule()">Save</button>
+        </div>
+        <div class="schedule-row">
             <div class="schedule-label">Auto-delete backups older than</div>
             <select id="retention-select" style="width:200px">
                 <option value="0" ${retentionDays===0?'selected':''}>Disabled</option>
