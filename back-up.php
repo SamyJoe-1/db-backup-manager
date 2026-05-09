@@ -241,6 +241,29 @@ function rebuild_crontab($schedules) {
     unlink($tmp);
 }
 
+function rebuild_retention_crontab($retention) {
+    $marker_start = '# === DBBACKUP RETENTION START ===';
+    $marker_end   = '# === DBBACKUP RETENTION END ===';
+    $crontab = shell_exec('crontab -l 2>/dev/null') ?? '';
+    $crontab = preg_replace(
+            '/' . preg_quote($marker_start) . '.*?' . preg_quote($marker_end) . '/s',
+            '',
+            $crontab
+    );
+    $crontab = trim($crontab);
+    $lines = [$marker_start];
+    foreach ($retention as $db => $days) {
+        if (!is_valid_db_identifier($db) || $days <= 0) continue;
+        $lines[] = "0 3 * * * find " . BACKUP_DIR . "{$db}/ -name '*.sql.gz' -mtime +{$days} -delete >> /var/log/dbbackup.log 2>&1";
+    }
+    $lines[] = $marker_end;
+    $new_crontab = $crontab . "\n" . implode("\n", $lines) . "\n";
+    $tmp = tempnam(sys_get_temp_dir(), 'cron');
+    file_put_contents($tmp, $new_crontab);
+    shell_exec("crontab $tmp");
+    unlink($tmp);
+}
+
 function interval_to_cron($interval) {
     $map = [
         '2m' => '*/2 * * * *',
@@ -265,7 +288,7 @@ if (isset($_POST['action'])) {
 
     // --- DB LIST ---
     if ($action === 'list_dbs') {
-        echo json_encode(['dbs' => get_databases(), 'schedules' => get_schedules()]);
+        echo json_encode(['dbs' => get_databases(), 'schedules' => get_schedules(), 'retention' => load_json(RETENTION_FILE, [])]);
         exit;
     }
 
@@ -433,6 +456,28 @@ if (isset($_POST['action'])) {
         while ($row = $res->fetch_assoc()) $dbs[] = $row['SCHEMA_NAME'];
         $conn->close();
         echo json_encode(['dbs' => $dbs]); exit;
+    }
+
+    if ($action === 'set_retention') {
+        $db   = trim($_POST['db'] ?? '');
+        $days = intval($_POST['days'] ?? 0);
+        if (!is_valid_db_identifier($db)) {
+            echo json_encode(['error' => 'Invalid DB name']); exit;
+        }
+        $retention = load_json(RETENTION_FILE, []);
+        if ($days <= 0) {
+            unset($retention[$db]);
+        } else {
+            $retention[$db] = $days;
+        }
+        save_json(RETENTION_FILE, $retention);
+        rebuild_retention_crontab($retention);
+        echo json_encode(['ok' => true]); exit;
+    }
+
+    if ($action === 'get_retention') {
+        $retention = load_json(RETENTION_FILE, []);
+        echo json_encode(['retention' => $retention]); exit;
     }
 
     echo json_encode(['error' => 'Unknown action']);
@@ -1233,6 +1278,7 @@ if (isset($_POST['action'])) {
     let state = {
         dbs: [],
         schedules: {},
+        retention: {},
         selected: null,
         backups: [],
         selectedBackup: null,
@@ -1281,6 +1327,7 @@ if (isset($_POST['action'])) {
     async function loadDbs() {
         const data = await api({ action: 'list_dbs' });
         state.dbs = data.dbs || [];
+        state.retention = data.retention || {};
         state.schedules = data.schedules || {};
         renderDbList();
     }
@@ -1402,6 +1449,7 @@ if (isset($_POST['action'])) {
         }
 
         const sched = state.schedules[db] || 'none';
+        const retentionDays = state.retention[db] || 0;
         const backups = state.backups;
         const totalBackups = backups.length;
         const totalPages = Math.max(1, Math.ceil(totalBackups / BACKUPS_PER_PAGE));
@@ -1445,9 +1493,16 @@ if (isset($_POST['action'])) {
 
         <div class="section-title">Auto Backup Schedule</div>
         <div class="schedule-row">
-            <div class="schedule-label">Run backup</div>
-            <select id="sched-select" style="width:200px">${schedOptions}</select>
-            <button class="btn btn-ghost btn-sm" onclick="saveSchedule()">Save</button>
+            <div class="schedule-label">Auto-delete backups older than</div>
+            <select id="retention-select" style="width:200px">
+                <option value="0" ${retentionDays===0?'selected':''}>Disabled</option>
+                <option value="7" ${retentionDays===7?'selected':''}>7 days</option>
+                <option value="14" ${retentionDays===14?'selected':''}>14 days</option>
+                <option value="30" ${retentionDays===30?'selected':''}>30 days</option>
+                <option value="60" ${retentionDays===60?'selected':''}>60 days</option>
+                <option value="90" ${retentionDays===90?'selected':''}>90 days</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="saveRetention()">Save</button>
         </div>
 
         <div style="margin-top:20px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between">
@@ -1632,6 +1687,17 @@ if (isset($_POST['action'])) {
             await loadDbs();
             toast('Schedule saved');
             renderRight();
+        }
+    }
+
+    async function saveRetention() {
+        const days = document.getElementById('retention-select').value;
+        const r = await api({ action: 'set_retention', db: state.selected, days });
+        if (r.ok) {
+            state.retention[state.selected] = parseInt(days);
+            toast(days === '0' ? 'Retention disabled' : `Retention set to ${days} days`);
+        } else {
+            toast(r.error || 'Failed', 'error');
         }
     }
 

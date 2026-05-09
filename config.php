@@ -15,6 +15,7 @@ define('BACKUP_DIR', '/home/backups/');
 define('BACKUP_EXT', '.sql.gz');
 define('SCHEDULE_FILE', '/etc/dbbackup/schedules.json');
 define('DB_LIST_FILE',  '/etc/dbbackup/databases.json');
+define('RETENTION_FILE', '/etc/dbbackup/retention.json');
 
 // Web UI auth — generate hash at: https://bcrypt-generator.com (rounds: 12)
 define('AUTH_USER', 'admin');
