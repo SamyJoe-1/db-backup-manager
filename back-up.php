@@ -480,6 +480,82 @@ if (isset($_POST['action'])) {
         echo json_encode(['retention' => $retention]); exit;
     }
 
+    if ($action === 'run_job') {
+        $type = trim($_POST['type'] ?? '');
+        $db   = trim($_POST['db'] ?? '');
+        if (!is_valid_db_identifier($db)) {
+            echo json_encode(['error' => 'Invalid DB name']); exit;
+        }
+        $job_id = uniqid('job_', true);
+        $log    = '/tmp/dbbackup_' . $job_id . '.log';
+
+        if ($type === 'backup') {
+            $cmd = sprintf(
+                    'nohup /usr/local/bin/db-backup.sh %s > %s 2>&1 & echo $!',
+                    escapeshellarg($db),
+                    escapeshellarg($log)
+            );
+        } elseif ($type === 'restore') {
+            $file   = trim($_POST['file'] ?? '');
+            $mode   = trim($_POST['mode'] ?? 'full');
+            $tables = trim($_POST['tables'] ?? '[]');
+            $path   = get_backup_path($db, $file);
+            if (!$path) { echo json_encode(['error' => 'Backup file not found']); exit; }
+
+            if ($mode === 'full') {
+                $cmd = sprintf(
+                        'nohup bash -c "mysql -h %s -u %s -p%s %s < <(zcat %s)" > %s 2>&1 & echo $!',
+                        escapeshellarg(DB_HOST),
+                        escapeshellarg(DB_USER),
+                        escapeshellarg(DB_PASS),
+                        escapeshellarg($db),
+                        escapeshellarg($path),
+                        escapeshellarg($log)
+                );
+            } else {
+                // tables mode — extract then restore
+                $tables_arr = array_values(array_filter(json_decode($tables, true) ?? [], fn($t) => is_valid_db_identifier($t)));
+                if (!$tables_arr) { echo json_encode(['error' => 'No valid tables']); exit; }
+                [$ok, $tmp] = extract_selected_tables_dump($path, $tables_arr);
+                if (!$ok) { echo json_encode(['error' => $tmp]); exit; }
+                $cmd = sprintf(
+                        'nohup bash -c "mysql -h %s -u %s -p%s %s < %s; rm -f %s" > %s 2>&1 & echo $!',
+                        escapeshellarg(DB_HOST),
+                        escapeshellarg(DB_USER),
+                        escapeshellarg(DB_PASS),
+                        escapeshellarg($db),
+                        escapeshellarg($tmp),
+                        escapeshellarg($tmp),
+                        escapeshellarg($log)
+                );
+            }
+        } else {
+            echo json_encode(['error' => 'Unknown job type']); exit;
+        }
+
+        $pid = trim(shell_exec($cmd));
+        file_put_contents($log, ''); // ensure file exists
+        echo json_encode(['ok' => true, 'job_id' => $job_id, 'pid' => $pid]);
+        exit;
+    }
+
+    if ($action === 'job_status') {
+        $job_id = preg_replace('/[^a-zA-Z0-9_.]/', '', trim($_POST['job_id'] ?? ''));
+        $pid    = intval($_POST['pid'] ?? 0);
+        $log    = '/tmp/dbbackup_' . $job_id . '.log';
+        $output = file_exists($log) ? file_get_contents($log) : '';
+        $running = $pid > 0 && file_exists('/proc/' . $pid);
+        echo json_encode(['running' => $running, 'output' => $output]);
+        exit;
+    }
+
+    if ($action === 'job_kill') {
+        $pid = intval($_POST['pid'] ?? 0);
+        if ($pid > 0) shell_exec('kill ' . $pid . ' 2>/dev/null');
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
     echo json_encode(['error' => 'Unknown action']);
     exit;
 }
@@ -1279,6 +1355,8 @@ if (isset($_POST['action'])) {
         dbs: [],
         schedules: {},
         retention: {},
+        activeJob: null,
+        jobPoller: null,
         selected: null,
         backups: [],
         selectedBackup: null,
@@ -1389,6 +1467,60 @@ if (isset($_POST['action'])) {
 
     function hideSuggestions() {
         document.getElementById('db-suggestions').style.display = 'none';
+    }
+
+
+    async function startJob(type, extraParams = {}) {
+        const db = state.selected;
+        const r = await api({ action: 'run_job', type, db, ...extraParams });
+        if (r.error) { toast(r.error, 'error'); return; }
+
+        state.activeJob = { job_id: r.job_id, pid: r.pid, type, db };
+        renderJobPanel();
+
+        state.jobPoller = setInterval(async () => {
+            const s = await api({ action: 'job_status', job_id: r.job_id, pid: r.pid });
+            renderJobPanel(s.output);
+            if (!s.running) {
+                clearInterval(state.jobPoller);
+                state.jobPoller = null;
+                toast(type === 'backup' ? 'Backup completed' : 'Restore completed');
+                const data = await api({ action: 'list_backups', db });
+                state.backups = data.backups || [];
+                state.backupsPage = 1;
+                state.activeJob = null;
+                renderJobPanel();
+                renderRight();
+            }
+        }, 2000);
+    }
+
+    function renderJobPanel(output = '') {
+        let panel = document.getElementById('job-panel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'job-panel';
+            panel.style.cssText = 'position:fixed;bottom:24px;left:24px;width:380px;background:#111118;border:1px solid #1e1e2e;border-radius:8px;padding:16px;z-index:500;font-family:monospace;font-size:12px;';
+            document.body.appendChild(panel);
+        }
+        if (!state.activeJob) { panel.remove(); return; }
+        panel.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <span style="color:#00ff88;font-weight:700"><span class="loader"></span> ${state.activeJob.type.toUpperCase()} RUNNING — ${state.activeJob.db}</span>
+            <button onclick="killJob()" style="background:transparent;border:1px solid rgba(255,60,110,.3);color:#ff3c6e;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:11px">Kill</button>
+        </div>
+        <div style="background:#050508;border:1px solid #1e1e2e;border-radius:4px;padding:10px;max-height:120px;overflow-y:auto;color:#00ff88;white-space:pre-wrap;word-break:break-all">${output || 'Starting...'}</div>
+    `;
+    }
+
+    async function killJob() {
+        if (!state.activeJob) return;
+        await api({ action: 'job_kill', pid: state.activeJob.pid });
+        clearInterval(state.jobPoller);
+        state.jobPoller = null;
+        state.activeJob = null;
+        renderJobPanel();
+        toast('Job killed', 'error');
     }
 
     async function addDb() {
@@ -1708,19 +1840,9 @@ if (isset($_POST['action'])) {
 
     async function backupNow() {
         const db = state.selected;
-        const btn = document.getElementById('backup-now-btn');
-        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loader"></span> Backing up...'; }
-        const r = await api({ action: 'backup_now', db });
-        if (btn) { btn.disabled = false; btn.innerHTML = '▶ Backup Now'; }
-        if (r.ok) {
-            toast('Backup completed');
-            const data = await api({ action: 'list_backups', db });
-            state.backups = data.backups || [];
-            state.backupsPage = 1;
-            renderRight();
-        } else {
-            toast(r.error || 'Backup failed', 'error');
-        }
+        state.selectedBackup = null;
+        document.getElementById('backup-modal-root').innerHTML = '';
+        await startJob('backup');
     }
 
     function selectBackup(backup) {
@@ -1752,39 +1874,13 @@ if (isset($_POST['action'])) {
 
     async function doRestore() {
         if (!state.selectedBackup) return;
-        const db = state.selected;
         const file = state.selectedBackup.file;
         const mode = state.restoreMode;
         const tables = mode === 'tables' ? state.selectedRestoreTables : [];
         if (mode === 'tables' && !tables.length) return;
-
         state.selectedBackup = null;
-        state.restoreMode = 'full';
-        state.backupTables = [];
-        state.backupTablesFile = null;
-        state.backupTablesLoading = false;
-        state.backupTablesError = null;
-        state.selectedRestoreTables = [];
         document.getElementById('backup-modal-root').innerHTML = '';
-
-        const log = document.getElementById('action-log');
-        if (log) { log.classList.add('visible'); log.textContent = 'Restoring... please wait.'; }
-
-        const r = await api({ action: 'restore', db, file, mode, tables: JSON.stringify(tables) });
-
-        if (r.ok) {
-            toast(mode === 'tables' ? 'Selected tables restored successfully' : 'Restore completed successfully');
-            const data = await api({ action: 'list_backups', db });
-            state.backups = data.backups || [];
-            state.backupsPage = 1;
-            renderRight();
-            const l = document.getElementById('action-log');
-            if (l) { l.classList.add('visible'); l.textContent = r.output || 'Done.'; }
-        } else {
-            toast('Restore failed — check log', 'error');
-            const l = document.getElementById('action-log');
-            if (l) { l.classList.add('visible'); l.textContent = r.error || r.output || 'Unknown error'; }
-        }
+        await startJob('restore', { file, mode, tables: JSON.stringify(tables) });
     }
 
     // -------------------------------------------------------
