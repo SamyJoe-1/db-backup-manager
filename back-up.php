@@ -1707,6 +1707,7 @@ if (isset($_POST['action'])) {
     }
 
     async function backupNow() {
+        closeSelectedBackup();
         const db = state.selected;
         const log = document.getElementById('action-log');
         if (log) { log.classList.add('visible'); log.textContent = 'Running backup...'; }
