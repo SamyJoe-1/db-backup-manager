@@ -1512,7 +1512,7 @@ if (isset($_POST['action'])) {
 
         <div style="margin-top:20px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between">
             <div class="section-title" style="margin:0">Available Backups</div>
-            <button class="btn btn-primary btn-sm" onclick="backupNow()">
+            <button class="btn btn-primary btn-sm" onclick="backupNow()" id="backup-now-btn">
                 ▶ Backup Now
             </button>
         </div>
@@ -1707,21 +1707,17 @@ if (isset($_POST['action'])) {
     }
 
     async function backupNow() {
-        closeSelectedBackup();
         const db = state.selected;
-        const log = document.getElementById('action-log');
-        if (log) { log.classList.add('visible'); log.textContent = 'Running backup...'; }
+        const btn = document.getElementById('backup-now-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loader"></span> Backing up...'; }
         const r = await api({ action: 'backup_now', db });
+        if (btn) { btn.disabled = false; btn.innerHTML = '▶ Backup Now'; }
         if (r.ok) {
             toast('Backup completed');
             const data = await api({ action: 'list_backups', db });
             state.backups = data.backups || [];
             state.backupsPage = 1;
             renderRight();
-            if (r.output) {
-                const l = document.getElementById('action-log');
-                if (l) { l.classList.add('visible'); l.textContent = r.output || 'Done.'; }
-            }
         } else {
             toast(r.error || 'Backup failed', 'error');
         }
