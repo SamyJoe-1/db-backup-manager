@@ -16,8 +16,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'logout') {
 
 if (isset($_POST['login_user'])) {
     if (
-        $_POST['login_user'] === AUTH_USER &&
-        password_verify($_POST['login_pass'], AUTH_HASH)
+            $_POST['login_user'] === AUTH_USER &&
+            password_verify($_POST['login_pass'], AUTH_HASH)
     ) {
         $_SESSION['auth'] = true;
         $_SESSION['auth_time'] = time();
@@ -29,8 +29,8 @@ if (isset($_POST['login_user'])) {
 }
 
 if (
-    empty($_SESSION['auth']) ||
-    (time() - ($_SESSION['auth_time'] ?? 0)) > SESSION_LIFETIME
+        empty($_SESSION['auth']) ||
+        (time() - ($_SESSION['auth_time'] ?? 0)) > SESSION_LIFETIME
 ) {
     session_destroy();
     ?>
@@ -207,11 +207,11 @@ function get_backups_for($db) {
     if (!$files) return [];
     usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
     return array_map(fn($f) => [
-        'file'    => basename($f),
-        'path'    => $f,
-        'size'    => format_file_size(filesize($f)),
-        'date'    => date('Y-m-d H:i:s', filemtime($f)),
-        'ts'      => filemtime($f),
+            'file'    => basename($f),
+            'path'    => $f,
+            'size'    => format_file_size(filesize($f)),
+            'date'    => date('Y-m-d H:i:s', filemtime($f)),
+            'ts'      => filemtime($f),
     ], $files);
 }
 
@@ -221,9 +221,9 @@ function rebuild_crontab($schedules) {
     $crontab = shell_exec('crontab -l 2>/dev/null') ?? '';
     // Strip old block
     $crontab = preg_replace(
-        '/' . preg_quote($marker_start) . '.*?' . preg_quote($marker_end) . '/s',
-        '',
-        $crontab
+            '/' . preg_quote($marker_start) . '.*?' . preg_quote($marker_end) . '/s',
+            '',
+            $crontab
     );
     $crontab = trim($crontab);
     $lines = [$marker_start];
@@ -266,14 +266,14 @@ function rebuild_retention_crontab($retention) {
 
 function interval_to_cron($interval) {
     $map = [
-        '2m' => '*/2 * * * *',
-        '10m' => '*/10 * * * *',
-        '1h'   => '0 * * * *',
-        '3h'   => '0 */3 * * *',
-        '6h'   => '0 */6 * * *',
-        '12h'  => '0 */12 * * *',
-        '24h'  => '0 2 * * *',
-        'weekly' => '0 2 * * 0',
+            '2m' => '*/2 * * * *',
+            '10m' => '*/10 * * * *',
+            '1h'   => '0 * * * *',
+            '3h'   => '0 */3 * * *',
+            '6h'   => '0 */6 * * *',
+            '12h'  => '0 */12 * * *',
+            '24h'  => '0 2 * * *',
+            'weekly' => '0 2 * * 0',
     ];
     return $map[$interval] ?? null;
 }
@@ -406,22 +406,22 @@ if (isset($_POST['action'])) {
         $conn->close();
 
         $cmd = sprintf(
-            'cat %s | mysql -h %s -u %s -p%s %s 2>&1',
-            escapeshellarg($importPath),
-            escapeshellarg(DB_HOST),
-            escapeshellarg(DB_USER),
-            escapeshellarg(DB_PASS),
-            escapeshellarg($db)
-        );
-
-        if ($mode === 'full') {
-            $cmd = sprintf(
-                'zcat %s | mysql -h %s -u %s -p%s %s 2>&1',
-                escapeshellarg($path),
+                'cat %s | mysql -h %s -u %s -p%s %s 2>&1',
+                escapeshellarg($importPath),
                 escapeshellarg(DB_HOST),
                 escapeshellarg(DB_USER),
                 escapeshellarg(DB_PASS),
                 escapeshellarg($db)
+        );
+
+        if ($mode === 'full') {
+            $cmd = sprintf(
+                    'zcat %s | mysql -h %s -u %s -p%s %s 2>&1',
+                    escapeshellarg($path),
+                    escapeshellarg(DB_HOST),
+                    escapeshellarg(DB_USER),
+                    escapeshellarg(DB_PASS),
+                    escapeshellarg($db)
             );
         }
 
@@ -432,9 +432,9 @@ if (isset($_POST['action'])) {
         }
 
         echo json_encode([
-            'ok'     => $success,
-            'output' => $output ?? 'Done',
-            'error'  => $success ? null : $output,
+                'ok'     => $success,
+                'output' => $output ?? 'Done',
+                'error'  => $success ? null : $output,
         ]);
         exit;
     }
@@ -1607,10 +1607,10 @@ if (isset($_POST['action'])) {
                     </div>
                     <div class="backup-modal-warning">
                         ${isTablesMode
-                            ? `You are about to restore ${selectedCount ? `<strong>${selectedCount}</strong> selected table(s)` : 'selected tables'} into <strong>${state.selected}</strong> from this backup.
+            ? `You are about to restore ${selectedCount ? `<strong>${selectedCount}</strong> selected table(s)` : 'selected tables'} into <strong>${state.selected}</strong> from this backup.
                         <br><br>
                         Existing matching tables will be replaced by the imported table definitions and data.`
-                            : `You are about to restore <strong>${state.selected}</strong> from this backup.
+            : `You are about to restore <strong>${state.selected}</strong> from this backup.
                         <br><br>
                         <strong>This will DROP all tables</strong> and reimport the database from the selected file.`}
                         <br><br>
@@ -1758,6 +1758,15 @@ if (isset($_POST['action'])) {
         const tables = mode === 'tables' ? state.selectedRestoreTables : [];
         if (mode === 'tables' && !tables.length) return;
 
+        state.selectedBackup = null;
+        state.restoreMode = 'full';
+        state.backupTables = [];
+        state.backupTablesFile = null;
+        state.backupTablesLoading = false;
+        state.backupTablesError = null;
+        state.selectedRestoreTables = [];
+        document.getElementById('backup-modal-root').innerHTML = '';
+
         const log = document.getElementById('action-log');
         if (log) { log.classList.add('visible'); log.textContent = 'Restoring... please wait.'; }
 
@@ -1765,18 +1774,16 @@ if (isset($_POST['action'])) {
 
         if (r.ok) {
             toast(mode === 'tables' ? 'Selected tables restored successfully' : 'Restore completed successfully');
-            if (log) { log.textContent = r.output || 'Done.'; }
-            state.selectedBackup = null;
-            state.restoreMode = 'full';
-            state.backupTables = [];
-            state.backupTablesFile = null;
-            state.backupTablesLoading = false;
-            state.backupTablesError = null;
-            state.selectedRestoreTables = [];
+            const data = await api({ action: 'list_backups', db });
+            state.backups = data.backups || [];
+            state.backupsPage = 1;
             renderRight();
+            const l = document.getElementById('action-log');
+            if (l) { l.classList.add('visible'); l.textContent = r.output || 'Done.'; }
         } else {
             toast('Restore failed — check log', 'error');
-            if (log) { log.textContent = r.error || r.output || 'Unknown error'; }
+            const l = document.getElementById('action-log');
+            if (l) { l.classList.add('visible'); l.textContent = r.error || r.output || 'Unknown error'; }
         }
     }
 
