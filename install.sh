@@ -75,6 +75,7 @@ define('DB_LIST_FILE',  '/etc/dbbackup/databases.json');
 define('AUTH_USER', '$AUTH_USER');
 define('AUTH_HASH', '$AUTH_HASH');
 define('SESSION_LIFETIME', 3600);
+define('RETENTION_FILE', '/etc/dbbackup/retention.json');
 EOF
 
 # ---- Write nginx conf ----
